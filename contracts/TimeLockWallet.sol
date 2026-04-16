@@ -1,130 +1,53 @@
-pragma solidity ^0.6.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract TimeLockWallet {
-    using SafeERC20 for IERC20;
+contract TimeLockWallet is ReentrancyGuard {
+    address public immutable owner;
+    uint256 public immutable unlockTime;
 
-    // ERC20 basic token contract being held
-    IERC20 private _token;
+    event Deposited(address indexed from, uint256 amount, uint256 newBalance);
+    event Withdrawn(address indexed to, uint256 amount);
 
-    // beneficiary of tokens after they are released
-    address private _beneficiary;
-
-    // timestamp when token release is enabled
-    uint256 private _releaseTime;
-
-    address private _creator;
-
-    uint256 private _createdTime;
-
-    modifier onlyOwner {
-        require(msg.sender == _beneficiary);
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
         _;
     }
 
-    function init(
-        IERC20 token_,
-        address beneficiary_,
-        address creator_,
-        uint256 createdTime_,
-        uint256 releaseTime_
-    ) external {
-        // solhint-disable-next-line not-rely-on-time
-        require(
-            releaseTime_ > block.timestamp,
-            "TokenTimelock: release time is before current time"
-        );
-        _token = token_;
-        _beneficiary = beneficiary_;
-        _creator = creator_;
-        _createdTime = createdTime_;
-        _releaseTime = releaseTime_;
+    constructor(uint256 _unlockTime) payable {
+        require(_unlockTime > block.timestamp, "Unlock time should be in future");
+
+        owner = msg.sender;
+        unlockTime = _unlockTime;
+
+        if (msg.value > 0) {
+            emit Deposited(msg.sender, msg.value, address(this).balance);
+        }
     }
 
-    /**
-     * @return the token being held.
-     */
-    function token() public view virtual returns (IERC20) {
-        return _token;
+    receive() external payable {
+        emit Deposited(msg.sender, msg.value, address(this).balance);
     }
 
-    /**
-     * @return the beneficiary of the tokens.
-     */
-    function beneficiary() public view virtual returns (address) {
-        return _beneficiary;
+    function deposit() external payable {
+        require(msg.value > 0, "Deposit must be greater than zero");
+        emit Deposited(msg.sender, msg.value, address(this).balance);
     }
 
-    function creator() public view virtual returns (address) {
-        return _creator;
-    }
-
-    function createdTime() public view virtual returns (uint256) {
-        return _createdTime;
-    }
-
-    /**
-     * @return the time when the tokens are released.
-     */
-    function releaseTime() public view virtual returns (uint256) {
-        return _releaseTime;
-    }
-
-    /**
-     * @notice Transfers tokens held by timelock to beneficiary.
-     */
-    function releaseToken() public virtual onlyOwner {
-        // solhint-disable-next-line not-rely-on-time
-        require(
-            block.timestamp >= releaseTime(),
-            "TokenTimelock: current time is before release time"
-        );
-
-        uint256 amount = token().balanceOf(address(this));
-        require(amount > 0, "TokenTimelock: no tokens to release");
-
-        token().safeTransfer(beneficiary(), amount);
-    }
-
-    function depositEther() public payable {}
-
-    function getEtherBalance() public view returns (uint256) {
-        return address(this).balance;
-    }
-
-    function releaseEther() public onlyOwner {
-        // solhint-disable-next-line not-rely-on-time
-        require(
-            block.timestamp >= releaseTime(),
-            "Current time is before release time"
-        );
+    function withdraw() external onlyOwner nonReentrant {
+        require(block.timestamp >= unlockTime, "Funds are locked");
 
         uint256 amount = address(this).balance;
-        require(amount > 0, "No Ethers to release");
+        require(amount > 0, "No funds available");
 
-        payable(msg.sender).transfer(amount);
+        (bool sent, ) = payable(owner).call{value: amount}("");
+        require(sent, "ETH transfer failed");
+
+        emit Withdrawn(owner, amount);
     }
 
-    function getWalletDetails()
-        public
-        view
-        returns (
-            address,
-            address,
-            uint256,
-            uint256,
-            uint256,
-            uint256
-        )
-    {
-        return (
-            _beneficiary,
-            _creator,
-            _releaseTime,
-            _createdTime,
-            address(this).balance,
-            token().balanceOf(address(this))
-        );
+    function getBalance() external view returns (uint256) {
+        return address(this).balance;
     }
 }

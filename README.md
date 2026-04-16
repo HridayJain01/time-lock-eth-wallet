@@ -1,52 +1,173 @@
-# Time Locked Ethereum Wallet
+# Time-Lock Wallet (Hardhat Local)
 
-### Overview 
+A minimal Time-Lock Wallet smart contract project using Hardhat.
 
-An end-to-end Ethereum based time locked wallet for depositing and claiming Ether and/or a custom ERC20 token after a certain release time is reached. Can be used for vesting for an ICO, pension or trust funds.
+## What this project includes
 
-1. Clone Factory Pattern is used to optimise the gas consumption on wallet creation using delegate calls.
-2. Below is the comparision of the gas cost for **General Factory Pattern** and **Clone Factory Pattern** -
-  - Gas consumed for wallet creation with **General Factory Pattern** - 685437
-  - Gas consumed for wallet creation with **Clone Factory Pattern** - 197876
-  - % decrease in gas cost with **Clone Factory Pattern** ~ 70%
-3. Refer below article to know how delegate calls are used in EVM to optimise the contract creation.
-https://medium.com/coinmonks/delegatecall-calling-another-contract-function-in-solidity-b579f804178c
+- Solidity contract: `contracts/TimeLockWallet.sol`
+- Deployment script: `scripts/deploy.js`
+- Test suite: `test/TimeLockWallet.js`
+- Hardhat config: `hardhat.config.js`
 
-### Features 
-1. Create a new wallet for beneficiary.
-2. Deposit Ether and/or ASH Token (ERC20 token) to the beneficiary wallet with a certain relase time.
-3. Claim Ether and/or ASH Token from the wallet only after the release time.
-4. Topup existing beneficiary wallet with Ether and ASH token.
+## Prerequisites
 
-### Running the DApp locally 
+- Node.js 22.x LTS (recommended)
+- npm
+- MetaMask (optional for UI interactions)
 
-##### Prerequisite
+> You are currently on Node.js 25, and Hardhat shows a warning. It may still run, but Node 22 LTS is recommended for stability.
 
-1. Truffle
-2. Ganache GUI application
-2. Metamask plugin
+## Step-by-step setup
 
-##### Steps 
-1. Run the Ganache application. Create a new workspace with the following configuration -
-    > Truffle Projects  : ```./truffle.config```. Enter the absolute path here. 
-    > Host: 127.0.0.1    
-    > port: 8545,            
-    > network_id: 2020 
-    > Gas price: 20000000000 wei (approx)
-2. Compile and deploy the required smart contracts. 
-    ```sh
-    truffle migrate --reset
-    ```
-3. Start the react client application located at ```./client```. Need to install node modules for the first time.
-    ```sh
-    npm run start
-    ```
-4. The react application will run at ```http://localhost:3000/```
-5. Connect to new custom RPC in the Metamask plugin with the configurations same as that used for ganache.(one time setup).
+1. Install dependencies
 
-### Demo
+```bash
+npm install
+```
 
-![Create Wallet](./demo/create-wallet.png)
-![Topup Wallet](./demo/topup-wallet.png)
-![Withdraw](./demo/withdraw-error.png)
-![Withdraw](./demo/withdraw-success.png)
+2. Compile contracts
+
+```bash
+npm run compile
+```
+
+3. Run tests
+
+```bash
+npm test
+```
+
+4. Start local blockchain in terminal 1
+
+```bash
+npm run node
+```
+
+5. Deploy to local blockchain in terminal 2
+
+```bash
+npm run deploy:local
+```
+
+You will see:
+- deployer address
+- unlock time (Unix timestamp)
+- deployed contract address
+
+Deployment metadata is also written to `frontend/deployment.json` for the browser demo.
+
+## MetaMask demo run (for presentation)
+
+1. Keep Hardhat local node running in terminal 1:
+
+```bash
+npm run node
+```
+
+2. Deploy in terminal 2:
+
+```bash
+npm run deploy:local
+```
+
+3. Serve demo UI in terminal 3:
+
+```bash
+npm run demo:serve
+```
+
+4. Open in browser:
+
+```text
+http://127.0.0.1:4173
+```
+
+5. In MetaMask, add/switch to Hardhat local network:
+  - RPC URL: `http://127.0.0.1:8545`
+  - Chain ID: `31337`
+  - Currency symbol: `ETH`
+
+6. Import Hardhat account #0 private key into MetaMask (demo only):
+
+```text
+0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+7. On the page:
+  - Click "Connect MetaMask"
+  - Click "Switch to Hardhat 31337"
+  - Click "Load Contract" (address auto-filled from deployment.json)
+  - Click "Deposit" to add ETH
+  - Click "Withdraw" after unlock time
+
+8. For faster demo, skip waiting by moving time in Hardhat console:
+
+```bash
+npx hardhat console --network localhost
+```
+
+```javascript
+const addr = "PASTE_DEPLOYED_CONTRACT_ADDRESS";
+const wallet = await ethers.getContractAt("TimeLockWallet", addr);
+const unlock = await wallet.unlockTime();
+await network.provider.send("evm_setNextBlockTimestamp", [Number(unlock) + 1]);
+await network.provider.send("evm_mine");
+```
+
+## Interact using Hardhat console
+
+With local node running:
+
+```bash
+npx hardhat console --network localhost
+```
+
+Then run:
+
+```javascript
+const [owner] = await ethers.getSigners();
+const addr = "PASTE_DEPLOYED_CONTRACT_ADDRESS";
+const wallet = await ethers.getContractAt("TimeLockWallet", addr);
+
+(await wallet.getBalance()).toString();
+(await wallet.unlockTime()).toString();
+```
+
+Deposit ETH:
+
+```javascript
+await owner.sendTransaction({ to: addr, value: ethers.parseEther("0.1") });
+(await wallet.getBalance()).toString();
+```
+
+Withdraw (only after unlock):
+
+```javascript
+await wallet.withdraw();
+```
+
+## Fast local testing of time-lock
+
+If you do not want to wait for real time, move chain time forward in console:
+
+```javascript
+const unlock = await wallet.unlockTime();
+await network.provider.send("evm_setNextBlockTimestamp", [Number(unlock) + 1]);
+await network.provider.send("evm_mine");
+await wallet.withdraw();
+```
+
+## Contract behavior
+
+- Constructor sets:
+  - `owner`
+  - `unlockTime` (must be in future)
+- Accepts ETH via:
+  - `receive()`
+  - `deposit()`
+- `withdraw()` checks:
+  - caller is owner
+  - current block time >= unlock time
+- Emits events:
+  - `Deposited`
+  - `Withdrawn`
