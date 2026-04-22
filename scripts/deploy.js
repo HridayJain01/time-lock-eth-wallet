@@ -7,7 +7,7 @@ async function main() {
 
   const currentBlock = await hre.ethers.provider.getBlock("latest");
   const nextBlockTimestamp = currentBlock.timestamp + 1;
-  const unlockTime = nextBlockTimestamp + 20;
+  const unlockTime = nextBlockTimestamp + 30;
 
   await hre.network.provider.send("evm_setNextBlockTimestamp", [nextBlockTimestamp]);
   await hre.network.provider.send("evm_mine");
