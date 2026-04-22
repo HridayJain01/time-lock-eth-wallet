@@ -5,9 +5,11 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract TimeLockWallet is ReentrancyGuard {
     address public immutable owner;
-    uint256 public immutable unlockTime;
+    uint256 public unlockTime;
+    uint256 public constant DEPOSIT_LOCK_SECONDS = 30;
 
     event Deposited(address indexed from, uint256 amount, uint256 newBalance);
+    event UnlockTimeUpdated(uint256 newUnlockTime);
     event Withdrawn(address indexed to, uint256 amount);
 
     modifier onlyOwner() {
@@ -27,11 +29,16 @@ contract TimeLockWallet is ReentrancyGuard {
     }
 
     receive() external payable {
+        if (msg.value > 0) {
+            _setUnlockTime(block.timestamp + DEPOSIT_LOCK_SECONDS);
+        }
         emit Deposited(msg.sender, msg.value, address(this).balance);
     }
 
     function deposit() external payable {
         require(msg.value > 0, "Deposit must be greater than zero");
+
+        _setUnlockTime(block.timestamp + DEPOSIT_LOCK_SECONDS);
         emit Deposited(msg.sender, msg.value, address(this).balance);
     }
 
@@ -49,5 +56,10 @@ contract TimeLockWallet is ReentrancyGuard {
 
     function getBalance() external view returns (uint256) {
         return address(this).balance;
+    }
+
+    function _setUnlockTime(uint256 newUnlockTime) internal {
+        unlockTime = newUnlockTime;
+        emit UnlockTimeUpdated(newUnlockTime);
     }
 }

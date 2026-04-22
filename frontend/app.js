@@ -3,10 +3,12 @@ import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.2/+esm";
 const ABI = [
   "function owner() view returns (address)",
   "function unlockTime() view returns (uint256)",
+  "function DEPOSIT_LOCK_SECONDS() view returns (uint256)",
   "function getBalance() view returns (uint256)",
   "function deposit() payable",
   "function withdraw()",
   "event Deposited(address indexed from, uint256 amount, uint256 newBalance)",
+  "event UnlockTimeUpdated(uint256 newUnlockTime)",
   "event Withdrawn(address indexed to, uint256 amount)"
 ];
 
@@ -190,6 +192,14 @@ async function refreshBalance() {
   els.balance.textContent = `${ethers.formatEther(balanceWei)} ETH`;
 }
 
+async function refreshUnlockTime() {
+  if (!contract) return;
+  const unlockTime = await contract.unlockTime();
+  currentUnlock = unlockTime;
+  els.unlock.textContent = `${new Date(Number(unlockTime) * 1000).toLocaleString()} (${unlockTime})`;
+  els.countdown.textContent = formatCountdown(unlockTime);
+}
+
 async function depositEth() {
   if (!contract) {
     setLog("Load contract first.");
@@ -206,8 +216,9 @@ async function depositEth() {
     setLog("Sending deposit transaction...");
     const tx = await contract.deposit({ value: ethers.parseEther(amount) });
     await tx.wait();
+    await refreshUnlockTime();
     await refreshBalance();
-    setLog(`Deposit successful. Tx: ${tx.hash}`);
+    setLog(`Deposit successful. Unlock reset to 30 seconds. Tx: ${tx.hash}`);
   } catch (e) {
     setLog(`Deposit failed: ${e.shortMessage || e.message}`);
   }
@@ -223,6 +234,7 @@ async function withdrawEth() {
     setLog("Sending withdraw transaction...");
     const tx = await contract.withdraw();
     await tx.wait();
+    await refreshUnlockTime();
     await refreshBalance();
     setLog(`Withdraw successful. Tx: ${tx.hash}`);
   } catch (e) {

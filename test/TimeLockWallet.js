@@ -67,4 +67,18 @@ describe("TimeLockWallet", function () {
 
     expect(await wallet.getBalance()).to.equal(ethers.parseEther("1.2"));
   });
+
+  it("resets unlock time to 30 seconds on deposit", async function () {
+    const { wallet, otherAccount } = await deployFixture();
+
+    await otherAccount.sendTransaction({
+      to: wallet.target,
+      value: ethers.parseEther("0.1"),
+    });
+
+    const block = await ethers.provider.getBlock("latest");
+    const unlockTime = await wallet.unlockTime();
+
+    expect(unlockTime).to.equal(BigInt(block.timestamp + 30));
+  });
 });
